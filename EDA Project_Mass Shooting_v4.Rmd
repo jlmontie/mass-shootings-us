@@ -1,0 +1,1058 @@
+Mass Shootings in the U.S. 1966 - 2017 by Jesse Montgomery
+========================================================
+
+Here, I analyze the Stanford Mass Shootings in America (MSA) dataset found on\
+Kaggle.com (https://www.kaggle.com/carlosparadis/stanford-msa). This includes \
+data of mass shootings (defined as 3 or more victims) occuring in the United \
+States between 1966 and 2016. This is described as a high-quality, but not\
+comprehensive dataset. To capture recent shootings not included in this \
+dataset, I added data from the US Mass Shootings dataset\
+(https://www.kaggle.com/zusmani/us-mass-shootings-last-50-years). This an open\
+dataset that is continually updated, but of lower quality. To explore \
+additional variables, I combined this dataset with US census data\
+(https://www2.census.gov/programs-surveys/popest/datasets/2010-2016/cities/\
+totals/sub-est2016_all.csv) as well as climate data from the National Oceanic \
+and Atmosphere Administration\
+(https://www1.ncdc.noaa.gov/pub/data/ccd-data/nrmavg.txt).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+options(scipen=999) #Suppress scientific notation to make plots more readable.
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(tidyr)
+library(dplyr)
+library(reshape2)
+library(ggmap)
+library(colorspace)
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+# Work
+setwd(paste("C:\\Users\\jesse_montgomery\\Google Drive\\Scripts\\R\\",
+"Udacity_DAND\\Exploratory Data Analysis\\Project_Mass Shootings", sep=""))
+# # Home
+# setwd(paste("C:\\Users\\jesse\\Google Drive\\Scripts\\R\\",
+# "Udacity_DAND\\Exploratory Data Analysis\\Project_Mass Shootings", sep=""))
+# Mass shooting data
+shootings <- read.csv(
+  "mass_shooting_events_stanford_msa_release_06142016_2.csv", 
+  stringsAsFactors = F)
+# Climate data
+climate <- read.csv("MonthlyAverageTempByCity.csv", stringsAsFactors = F)
+# Population data
+populations <- read.csv("sub-est2016_all.csv", stringsAsFactors = F)
+```
+
+
+```{r echo=FALSE, Clean_the_Data}
+# Remove rows with only NA values
+shootings = na.omit(shootings)
+# Create a column for numeric Julian date
+shootings$Date.Numeric = shootings$Date
+# Convert date strings to Julian date. Make formatting conditional based on 
+# whether there is 2 or 4 digit year
+for (i in 1:length(shootings$Date)) { 
+  if (as.Date(shootings$Date[i], "%m/%e/%y") < as.Date("2018-01-01")) { 
+    shootings$Date.Numeric[i] <- as.Date(shootings$Date[i], "%m/%e/%y")
+  } else {shootings$Date.Numeric[i] <- as.Date(shootings$Date[i], "%m/%e/%Y")
+  }
+}
+shootings$Date.Numeric = as.numeric(shootings$Date.Numeric)
+shootings$Date = as.Date.character(shootings$Date, format = "%m/%d/%Y")
+# Make a separate column for year, month, and day
+shootings$Year <- lapply(shootings$Date.Numeric, function(x) {
+                         format(as.Date(x, origin=as.Date('1970-01-01')), 
+                                format = '%Y')})
+shootings$Year <- as.numeric(shootings$Year)
+shootings$Month <- lapply(shootings$Date.Numeric, function(x) {
+                          format(as.Date(x, origin=as.Date('1970-01-01')), 
+                                 format = '%b')})
+shootings$Month <- factor(shootings$Month, levels = 
+                            c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", 
+                              "Aug", "Sep", "Oct", "Nov", "Dec"))
+shootings$Day <- lapply(shootings$Date.Numeric, function(x) {
+                        format(as.Date(x,origin=as.Date('1970-01-01')), 
+                               format = '%d')})
+shootings$Day <- as.numeric(shootings$Day)
+
+# Fix formatting on other columns of interest. 
+shootings$Day.of.Week <- factor(shootings$Day.of.Week, levels = 
+                                  c("Sunday", "Monday", "Tuesday", "Wednesday",
+                               "Thursday", "Friday", "Saturday"))
+shootings$Average.Shooter.Age <- suppressWarnings(as.numeric(
+  shootings$Average.Shooter.Age))
+shootings$Number.of.Shotguns <- suppressWarnings(as.numeric(
+  shootings$Number.of.Shotguns))
+shootings$Number.of.Rifles <- suppressWarnings(as.numeric(
+  shootings$Number.of.Rifles))
+shootings$Number.of.Handguns <- suppressWarnings(as.numeric(
+  shootings$Number.of.Handguns))
+shootings$Number.of.Automatic.Guns <- suppressWarnings(as.numeric(
+  shootings$Number.of.Automatic.Guns))
+shootings$Number.of.Semi.Automatic.Guns <- suppressWarnings(as.numeric(
+  shootings$Number.of.Semi.Automatic.Guns))
+shootings$Total.Number.of.Guns <- suppressWarnings(as.numeric(
+  shootings$Total.Number.of.Guns))
+shootings$Shooter.Sex <- factor(shootings$Shooter.Sex, levels = 
+                                  c("Male", "Female"))
+shootings$Fate.of.Shooter.at.the.scene <- factor(
+  shootings$Fate.of.Shooter.at.the.scene)
+shootings$Shooter.s.Cause.of.Death <- factor(shootings$Shooter.s.Cause.of.Death)
+shootings$School.Related <- factor(shootings$School.Related)
+shootings$History.of.Mental.Illness...General <- factor(
+  shootings$History.of.Mental.Illness...General)
+shootings$Military.Experience <- factor(shootings$Military.Experience)
+shootings$State <- factor(shootings$State)
+shootings$Shooter.Race <- factor(shootings$Shooter.Race)
+shootings$Possible.Motive...General <- factor(
+  shootings$Possible.Motive...General)
+shootings$Targeted.Victim.s...General <- factor(
+  shootings$Targeted.Victim.s...General, levels = 
+    sort(unique(shootings$Targeted.Victim.s...General), decreasing = TRUE))
+shootings$City <- factor(shootings$City)
+shootings$Place.Type <- factor(shootings$Place.Type)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# This function will create a vector of indices that will be used to map each 
+# shooting city to the nearest city in the climate data. Proximity is 
+# determined by latitude and longitude in both datasets. The distance of each
+# shooting location to the cities in the climate dataset was calculated using
+# the euclidean distance formula (a^2 + b^2 = c^2).
+get.ref.indices <- function(reference.data) {
+  # Create an empty vector for the indices
+  reference.data.indices <- vector(mode = "numeric", length = nrow(shootings))
+  # Loop through each row of the shootings dataset.
+  for (i in 1:nrow(shootings)) {
+  distance.vector <- 
+    # Calculate the euclidean distance of the shooting location to each city
+    # in the climate dataset.
+    sqrt((shootings$Longitude[i] - reference.data$Longitude)^2 + 
+           (shootings$Latitude[i] - reference.data$Latitude)^2)
+  # Find the minimum distance and get the index. 
+  reference.data.indices[i] <- which.min(distance.vector)
+  }
+  # Return the index for all shooting locations corresponding to the closest
+  # city in the climate dataset.
+  return(reference.data.indices)
+}
+
+# Run the above function on the climate data set.
+climate.indices <- get.ref.indices(climate)
+
+# Create a column of the average monthly temperature of the shooting location
+# based on the climate dataset.
+for (i in 1:nrow(shootings)) {
+shootings$Location.Temp.Month.Avg[i] <- 
+  climate[climate.indices[i], as.character(shootings$Month[i])]
+}
+shootings$Location.Temp.Month.Avg <- 
+  as.numeric(shootings$Location.Temp.Month.Avg)
+
+# Create a column of population based on the census data. The for loop below
+# simply searches for the name of the city and state in the shooting dataset 
+# matching the city and state in the census data.
+shootings$Population <- numeric(nrow(shootings))
+for (i in 1:nrow(shootings)) {
+   city_population <- as.numeric(
+    populations[(as.character(shootings$City[i]) == populations$NAME) & 
+                   (as.character(shootings$State[i]) == populations$STNAME), 
+                 "CENSUS2010POP"])
+   if (length(city_population) > 0) {
+     shootings$Population[i] = city_population
+   } else {
+     shootings$Population[i] = NA
+   }
+}
+```
+
+# Univariate Plots Section
+I will break the univariate analysis up in five sections: 
+
+1. The magnitude of shootings. What is the distribution of those killed/injured?
+    + Total number of fatalities 
+    + Total number of inuries
+2. Shootings over time. Are more shootings happening? Is there a \
+seasonality?
+    + By day of the week
+    + By year
+    + By month 
+3. Location. Where do mass shootings occur most often? Are there common \
+characteristics about the places?
+    + State
+    + City
+    + Population
+    + Type of place
+4. Weapons. Are there types of weapons that are used more than others? Would \
+gun control be more effective for a type of gun?
+    + Type of gun
+    + Number of guns
+5. Shooter demographics. Are there common characteristics among shooters?
+    + Race
+    + Age
+    + History of mental illness
+    + Possible motives
+    + Targeted victims
+
+## 1. Magnitude of Shootings
+
+### Variable Summaries
+Number of fatalities and number of victims injured.
+
+```{r echo=FALSE}
+# Isolate the more interesting columns for summary
+Magnitude_Vars_of_Interest = 
+  c("Total.Number.of.Fatalities", "Number.of.Victims.Injured")
+kable(summary(shootings[Magnitude_Vars_of_Interest]))
+```
+
+There is a very large difference between Max and all other stats for each of \
+these variables indicating some outliers or a very skewed distribution. Let's \
+take a look.
+
+### Plots of Fatalities and Victims
+
+```{r echo=FALSE}
+p1 <- ggplot(data = shootings) +
+  geom_histogram(aes(x = Total.Number.of.Fatalities), fill = 'orange', 
+                 binwidth = 1) 
+p2 <- ggplot(data = shootings) +
+  geom_histogram(aes(x = Number.of.Victims.Injured), fill = 'orange', 
+                 binwidth = 1) 
+grid.arrange(p1, p2)
+```
+
+There are several outliers. The most extreme is the shooting with over 500 \
+injured victims. Let's see what shooting this is.
+
+```{r echo=FALSE}
+kable(shootings[shootings$Number.of.Victims.Injured > 500, 
+          c("Title", "Date...Detailed", "Location", 
+            "Total.Number.of.Fatalities", "Number.of.Victims.Injured")])
+```
+
+It is no surprise that this was the recent shooting in Las Vegas, the most \
+deadly in history. It also accounts for the highest fatality outlier.
+
+This is one analysis where outliers cannot be ignored. But to visualize the \
+distributuion of other shootings better, I will plot the lower 90% of data.
+
+```{r echo=FALSE}
+# Data is subsetted using the quantile function, using a quantile of 0.9.
+p1 <- ggplot(data = subset(shootings, Total.Number.of.Fatalities < 
+                             quantile(shootings$Total.Number.of.Fatalities, 
+                                      0.9))) +
+  geom_histogram(aes(x = Total.Number.of.Fatalities), fill = 'orange', 
+                 binwidth = 1) +
+  scale_x_continuous(breaks = seq(0, 8, 1))
+p2 <- ggplot(data = subset(shootings, Number.of.Victims.Injured < 
+                             quantile(shootings$Number.of.Victims.Injured, 
+                                      0.9))) +
+  geom_histogram(aes(x = Number.of.Victims.Injured), fill = 'orange', 
+                 binwidth = 1) +
+  scale_x_continuous(breaks = seq(0, 10, 1))
+grid.arrange(p1, p2)
+```
+
+The distribution for mass shootings is skewed to the right. Most shootings tend \
+to have less victims.
+
+Let's look at the magnitude of the top 5 mass shootings, including when and \
+where they occurred. I will define the top 5 mass shootings as those with the \
+greatest number of fatalities.
+
+```{r echo=FALSE}
+# Sort the data by number of fatalities
+shootings.Sorted.by.Fatalities <- 
+  shootings[order(-shootings$Total.Number.of.Fatalities), ]
+kable(shootings.Sorted.by.Fatalities[1:5, 
+      c("Title", "Date...Detailed", "Location", "Total.Number.of.Fatalities", 
+            "Number.of.Victims.Injured")])
+```
+
+
+With the exception of the mass shooting at Virginia Tech, the most severe \
+shootings have occured in the last 5 years. It is a grim trend to consider.
+
+## 2. Shootings Over Time
+### Variable Summaries
+Year, day of the week, and the month.
+
+```{r echo=FALSE}
+# Isolate the more interesting columns for summary
+Time_Vars_of_Interest = 
+  c("Year", "Day.of.Week", "Month")
+kable(summary(shootings[Time_Vars_of_Interest]))
+```
+
+The median year being very near the Max indicates a skewed distribution.There \
+doesn't appear to be an obvious trend with day of the week, except that mass \
+shootings are less common on Tuesday and Saturday.  Winter and Spring\
+months appear to have more shootings.
+
+### Shootings by Year
+
+```{r echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(aes(x = Year), fill = 'orange', binwidth = 1) +
+  scale_x_continuous(breaks = seq(1965, 2015, 5))
+
+```
+
+The distribution is certainly skewed to the left. It looks like there has \
+been an increase in the last five years with a major spike in 2015 and 2016. It\
+would appear that things are getting worse. 
+
+### Shootings by Day of the Week
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(stat = 'count', aes(x = Day.of.Week), fill = 'orange')
+```
+
+Perhaps Tuesday and Saturday are safer days to be in public?
+
+### Shootings by Month
+
+How about month? Is there a seasonality to mass shootings?
+
+```{r warning=FALSE, echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(stat = 'count', aes(x = Month), fill = 'orange')
+```
+
+Indeed, it does appear that most shootings occur in winter and early spring \
+months with the exception of January. This surprises me. I think of mass \
+shootings being random attacks at large gatherings which I picture occuring \
+outdoors more often during the summer. Perhaps depression influenced by darker \
+and colder months is a factor. Let's see if temperature is a factor. I have \
+created a column of the likely temperature that month in the area pulled from\
+National Oceanic and Atmospheric Administration (NOAA) climate data.
+
+```{r echo=FALSE, message=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(aes(x = Location.Temp.Month.Avg), fill = 'orange')
+```
+
+There is a fairly normal distribution centered about 55 degrees, which is \
+the average annual temperature in the United States (55.7 $^\circ$F, \
+https://www.usclimatedata.com). If colder temperatures were a contributing\
+factor, I would expect data to be skewed to the right or at least the mean\
+shifted to the left of the national average temperature. 
+
+## 3. Shootings by Location
+### Variable Summaries
+State, city, population, and type of place.
+
+```{r echo=FALSE}
+# Isolate the more interesting columns for summary
+Location_Vars_of_Interest = 
+  c("State", "City", "Population", "Place.Type")
+kable(summary(shootings[Location_Vars_of_Interest]))
+```
+
+Let's at the locations of mass shootings. First by state.
+
+### Shootings by State
+
+```{r echo=FALSE, warning=FALSE, Univariate_Plots}
+# First reorder the factors in order of decreasing frequency.
+# Order states by frequency. Create a table and then sort it. Then refactor by 
+# the sorted names of the table.
+states_decreasing = sort(table(shootings$State), decreasing = T)
+shootings.Sorted.by.State <- 
+  within(shootings, State <- factor(State, levels=names(states_decreasing)))
+## plot
+ggplot(data = shootings.Sorted.by.State) +
+  geom_histogram(stat = 'count', aes(x = State), fill = 'orange') +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+# Sum of incidents in the top 5 states
+SumTopFiveStates <- sum(states_decreasing[1:5])
+# Sum of incidents in all states
+SumAllStates <- sum(states_decreasing)
+# Fraction of all shootings that occured in the top 5 states
+FractionTop5States <- SumTopFiveStates/SumAllStates
+```
+
+The top 3-5 states tower over the rest. The top 5 states account for 35% of \
+all shootings. Is there something unique about these locations? 
+
+### Shootings by City
+
+Mass shootings are concentrated in a few states. Are they repeated in \
+individual cities? Again, we will order the histogram by frequency.
+
+```{r, warning=FALSE, echo=FALSE}
+city_decreasing = sort(table(shootings$City), decreasing = T)
+shootings.Sorted.by.City <- within(shootings, City <- 
+                                    factor(City, levels=names(city_decreasing)))
+ggplot(data = shootings.Sorted.by.City) +
+  geom_histogram(stat = "count", aes(x = City), fill = 'orange') +
+  theme(axis.text.x = element_blank())
+```
+
+Fewer than a quarter of the cities have more than one incident. Let's zoom in \
+on those.
+
+```{r, warning=FALSE, echo=FALSE}
+shootings.Sorted.by.City.Top <- 
+  subset(shootings.Sorted.by.City, City %in% 
+           names(city_decreasing[city_decreasing > 1]))
+ggplot(data = shootings.Sorted.by.City.Top) +
+  geom_histogram(stat = "count", aes(x = City), fill = 'orange') +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+There are several highly populated cities in this list, but that isn't the \
+case for all of them.
+
+Now let's look at the population of cities with mass shootings.
+
+### Shootings and Population
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(aes(x = Population), fill = 'orange', binwidth = 10000)
+```
+
+There are a handful of cities with very high populations. Let's look at the \
+lower 90%
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = subset(shootings, Population < 
+                       quantile(shootings$Population, 0.9, na.rm = T))) +
+  geom_histogram(aes(x = Population), fill = 'orange', binwidth = 10000)
+```
+
+The distribution is skewed to the right. Mass shootings occur more frequently in\
+cities with lower populations. Half of them occur in cities with less than \
+100,000 people.
+
+### Shootings by Type of Place
+
+What types of locations or facilities are most frequently targeted by shooters?
+
+```{r, warning=FALSE, echo=FALSE, PlotTypeHist}
+ggplot(data = shootings) +
+  geom_bar(aes(x = Place.Type), fill = 'orange') +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Neighborhoods are the most frequently targeted. Places of business, education \
+and government are also common.
+
+## 4. Weapons
+What weapons were involved in mass shootings? Should gun control efforts be \
+placed on certain types of weapons?
+
+Number of each type of gun.
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+# Melt data with reshape2 to put into long form that can be easily plotted
+# with ggplot2.
+Weapons_Vars_of_Interest = c("Number.of.Shotguns", "Number.of.Rifles", 
+                             "Number.of.Handguns", "Number.of.Automatic.Guns",
+                             "Number.of.Semi.Automatic.Guns")
+
+Gun.type <- melt(shootings[Weapons_Vars_of_Interest], 
+                 variable.name = "Gun.description",
+                 value.name = "Count")
+
+ggplot(data = Gun.type) +
+  stat_summary(aes(x = Gun.description, y = Count), 
+               fun.y = "sum", fill = "orange", geom = "bar") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+```
+
+Handguns guns are the most common weapons. Automatic and semi-automatic are \
+likely a subcategories of the other three gun types. Gun control efforts \
+would probably be best concentrated on handguns and especially those that are\
+semi-automatic.
+
+## 5. Shooter Deomographics
+Do shooters have anything in common?
+
+
+### Variable Summaries
+Race, age, history of mental illness, possible motives
+
+```{r echo=FALSE}
+# Isolate the more interesting columns for summary
+Shooter_Vars_of_Interest = 
+  c("Shooter.Race", "Average.Shooter.Age", 
+    "History.of.Mental.Illness...General", 
+    "Possible.Motive...General")
+kable(summary(shootings[Shooter_Vars_of_Interest]))
+```
+
+Most shooters are White Caucasian, followed by African American and about 30 \
+yrs old. Mental illness is known to affect about a third of the shooters. The\
+rest either had no history of mental illness or it was unknown. Most\
+motives are not known.
+
+### Race
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(stat = "count", aes(x = Shooter.Race), fill = 'orange') +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Races besides White and African American are few.
+
+### Age
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(aes(x = Average.Shooter.Age), fill = 'orange', binwidth = 1) + 
+  scale_x_continuous(breaks = seq(0, 70, 10))
+
+Number.Minor.Shooters <- nrow(subset(shootings, shootings$Average.Shooter.Age <
+                                       18, select = Average.Shooter.Age))
+```
+
+There appears to be an almost bimodal distribution around ages 20 and 40. A\
+large proportion of shooters are very young. At least 35 of them were minors.
+
+### Possible Motive
+It is apparent that most motives are unknown. Let's look at the rest of the\
+motives.
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = subset(shootings, shootings$Possible.Motive...General
+                     !='Unknown')) +
+  geom_histogram(stat="Count", aes(x = Possible.Motive...General), 
+                 fill = 'orange', binwidth = 1) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Four distinct categories are dominant, excluding multiple motives. The multiple\
+motives category includes more than one of the categories. For example, one\
+such shooting involved a young man that was bullied (social dispute) and had a \
+history of mental illness. Most of those labeled multiple motives are a \
+combination of these top four motives.
+
+1. Mental illness
+2. Domestic dispute
+3. Social dispute
+4. Terminated/Denied/Reprimanded.
+
+### Targeted Victims
+
+Who do shooters target?
+
+```{r, warning=FALSE, echo=FALSE}
+ggplot(data = shootings) +
+  geom_histogram(stat="Count", aes(x = Targeted.Victim.s...General), 
+                 fill = 'orange', binwidth = 1) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Four types of victims stand above the rest:
+
+1. School associates (Students/Classmates/Teacher)
+2. Family
+3. Business associates (Colleague/Workmate/Business acquaintance)
+4. General public
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+The data is tidy, long-form data where each row is an observation (shooting \
+event) and each column is a feature of the observation. There are not many \
+missing values for each feature, making this a good dataset from which to \
+draw conclusions. 
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features of interest are the number of fatalities and the number of \
+injuries.
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+To further understand this dataset, I would like to also look at geographical \
+distribution of the shootings and the type of place that shootings occurred.
+
+### Did you create any new variables from existing variables in the dataset?
+
+I did not create any new variables from the dataset, but I did pull in other \
+variables I was interested in. I pulled population data from a U.S. Census\
+and climate data from NOAA. I was able to match up location to these additional\
+by the longitude and latitude (climate) and city and state names (population)\
+in my primary dataset.
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+The most striking observation for me was the increase in shooting attacks over\
+time. It hints at great public danger for the future. I also found the  \
+population distribution interesting. Less populated areas are more prone to \
+mass shootings. 
+
+I had to rearrange the data to sum the types of weapons used in shootings. This\
+was necessary to arrange the data into a single column that could be easily \
+plotted in ggplot2. Other tidying included declaring numeric columns that were\
+imported as strings and converting string columns with distinct levels into\
+factors.
+
+# Bivariate Plots Section
+
+### Number of Fatalities with Time
+The histogram of shootings with time showed that shootings are increasing in\
+frequency. Are these shootings becoming more deadly? First, let's look at the\
+number of fatalities with time. 
+
+```{r echo=FALSE, message=FALSE}
+# Convert date character string to timestamp for plotting
+ggplot(data = shootings) +
+  geom_point(aes(x = Date, y = Total.Number.of.Fatalities),
+             size = 4, alpha = .5, color='red')
+```
+
+While there are some shootings within the past decade with higher fatalities\
+than previous years, most shootings appear to have similar fatalities with the\
+majority having less than 10. 
+
+### Number of Victims with Time
+
+Let's look at the same for number of victims\
+(fatalities + injuries). The Las Vegas shooting in October is a serious\
+outlier in this metric. To get a better look at other shootings, I will \
+remove it. 
+
+```{r echo=FALSE, message=FALSE, VictimsWithTime}
+ggplot(data = subset(shootings, CaseID!=327)) +
+  geom_point(aes(x = Date, y = Total.Number.of.Victims),
+             size = 4, alpha = .5, color = 'red')
+```
+
+Plots of Total Victims and Total Fatalities with time look very similar. There\
+are some shootings within the last 5 to 10 years with higher numbers. However,\
+it is not clear if there is a definite trend of mass shootings towards \
+increasing severity. It is possible that recent shootings are outliers that \
+do not reflect future activity. We can only hope this is the case. 
+
+### Geographic Distribution of Fatalities
+
+Let's see how fatalities are distributed across the country. 
+
+```{r echo=FALSE, message=FALSE, DistributionFatalities}
+map<-get_map(location='united states', zoom=4, maptype = "terrain",
+             source='google',color='color')
+ggmap(map) + geom_point(
+        aes(x=Longitude, y=Latitude, size=Total.Number.of.Fatalities 
+            ), 
+        data=shootings, alpha=.5, na.rm = T, color='red') + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank()) +
+  xlab("") + ylab("") 
+```
+
+Shootings are concentrated mostly along the Eastern United States and the West\
+Coast with a cluster in Southeast Texas. Fewer shootings have occured in the\
+Midwest and Central United States and may be influenced by more sparse \
+population density in these regions. Still, shootings have occured in remote\
+areas. There are several regions with dense clusters, indicating a large number\
+of fatalities. Some that stand out to me are  Southern California, Southern\
+Florida, Southeast Texas, and Northwest Washington. 
+
+### Place Type and Shooter Age
+
+What type of places do these shootings occur at? Are different types of places\
+targeted by different age demograpics? Let's look at this with a box plot.
+
+```{r echo=FALSE, message=FALSE, PlaceTypeShooterAge}
+ggplot(data = shootings) +
+  geom_boxplot(aes(x = Place.Type, 
+                   y = Average.Shooter.Age)) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Places of work (Company/Factory/Office) and government facilities are targeted\
+by older shooters while primary and secondary schools are targeted by younger \
+shooters. Retail facilities and residential neighborhoods have the broadest \
+distributions and are targeted by shooters of all ages.
+
+### Motive and age
+
+Do shooters of different ages have different motives? 
+
+```{r echo=FALSE, Motive_Age}
+ggplot(data = shootings) +
+  geom_boxplot(aes(x = Possible.Motive...General, y = Average.Shooter.Age)) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+The youngest shooters were motivated by expulsion or suspension from school and\
+harassment. Other motivations for younger shooters include drug use, financial\
+difficulties, race, and social disputes. Older shooters were motivated most by\
+financial and legal disputes. 
+
+### Age Group and Total Victims
+
+The previous two plots lead to the question what is the most deadly age group?
+
+```{r echo=FALSE, message=FALSE, AgeGroupTotalVictims}
+# Create discrete age ranges for easier viewing on stacked bar chart. A 
+# continuous scale is too difficult to distinguish age groups.
+shootings$Shooter.Age.Bucket <- cut(shootings$Average.Shooter.Age, 
+                                    breaks = c(10, 20, 30, 40, 50, 60, 70))
+ggplot(data=shootings) + 
+  geom_col(aes(x = Shooter.Age.Bucket, y = Total.Number.of.Victims), 
+           fill = "orange") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Shooters ages 20 to 30 are the most deadly. 
+
+### Motive and Total Victims
+
+Are some motives more deadly than others?
+
+```{r echo=FALSE, MotivesTotalVictims}
+ggplot(data = subset(shootings, CaseID!=327)) +
+  geom_col(aes(x = Possible.Motive...General, y = Total.Number.of.Victims), 
+           fill = "orange") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Previously, it was observed that domestic and social disputes were behind as \
+many shootings as mental illness. However, we see that mental illness is \
+responsible for as many victims as both of these combined. The top most deadly\
+known individual motives are:
+
+1. Mental illness
+2. Social dispute
+3. Political/Religious ideals
+4. Terminated/Denied/Reprimanded
+5. Domestic dispute
+6. Race
+7. Financial dispute
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+The number of fatalities and victims for each shooting has remained mostly\
+constant over time. There are some shootings in the past 5 to 10 years that \
+have an unusually high number of victims. It is possible that recent shooters\
+attempt to outdo previous shooters. More data would be required to confirm such\
+a trend. This is data I hope we won't collect.
+
+Geographic distribution is fairly spread out. No place in the United States\
+appears to be immune to this trauma. However, some regions are more prone to \
+mass shootings. There is greater conentration towards the East and West Coasts\
+with various clusters scattered across the states. Indiana, New Hampshire, \
+North Dakota, and Rhode Island are the only states without recorded mass\
+shootings in this dataset.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+Shooters have various motives and some of these tend to be dependent on age. In\
+some cases, different age groups also tend to target different types of places.\
+This is likely due to the type of facilities they often interact with and may \
+be related to their motives. For example, young shooters targeted primary and\
+secondary schools and one major motivation for this group was expulsion or\
+suspension from these institutions. 
+
+### What was the strongest relationship you found?
+
+This is a complex societal issue with many contributing factors, many of which\
+probably are not captured in this dataset. No strong relationships were found\
+and this is probably not likely for any small set of variables given the \
+complexity of the problem. However, some variables explain certain aspects. The\
+relationship of age with motive as well as how deadly different motives are \
+were the most impressive to me. Perhaps a greater understanding of the shooters\
+themselves would help shed light on unfathomable phenomenon and maybe even lead\
+to more effective prevention measures. 
+
+# Multivariate Plots Section
+
+In this section I will explore more about the shooters and their motives.
+
+### Geographical Distribution of Motives
+
+We've established the top 7 deadliest motives overall. Do these cluseter in \
+certain regions? 
+
+```{r echo=FALSE, message=FALSE, GeographyMotives}
+# Select the top most deadly motives
+Top.Motives <- c("Mental illness", "Social dispute", 
+                 "Political/Religious ideals", "Terminated/Denied/Reprimanded",
+                 "Domestic dispute", "Race", "Financial dispute")
+# Set custom color scale
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+               "#D55E00", "#CC79A7")
+# Plot map
+map<-get_map(location='united states', zoom=4, maptype = "terrain",
+             source='google',color='color')
+ggmap(map) + geom_point(
+        aes(x=Longitude, y=Latitude, size=Total.Number.of.Fatalities,
+            color = Possible.Motive...General),
+        data=subset(shootings, shootings$Possible.Motive...General %in%
+                    Top.Motives), na.rm = T) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank()) +
+  xlab("") + ylab("") +
+  scale_colour_manual(values=cbPalette)
+```
+
+Every motive is observed from coast to coast. No distinct clusters are apparent\
+for any particular motive.
+
+### Total Victims, Motives, and Time
+
+How do the top motives trend with time? Are there motives that are more \
+currently of concern? 
+
+```{r echo=FALSE, VictimsMotivesTime}
+# Perform a group by to get the total victims for each motive in a given year
+VictimsByMotive <- shootings %>% 
+  group_by(Possible.Motive...General, Year) %>%
+  summarise(Total.Victims = sum(Total.Number.of.Victims))
+
+ggplot(data=subset(VictimsByMotive, VictimsByMotive$Possible.Motive...General
+                   %in% Top.Motives)) +
+  geom_line(aes(x = Year, y = Total.Victims, 
+                color = Possible.Motive...General), size = 2) 
+```
+
+Viewing all three variables on a single plot is far too busy. Let's break this\
+up and look at each motive on a separate plot. 
+
+```{r echo=FALSE, VictimsMotivesTimeFacet}
+# Perform a group by to get the total victims for each motive in a given year
+VictimsByMotive <- shootings %>% 
+  group_by(Possible.Motive...General, Year) %>%
+  summarise(Total.Victims = sum(Total.Number.of.Victims))
+
+ggplot(data=subset(VictimsByMotive, VictimsByMotive$Possible.Motive...General
+                   %in% Top.Motives)) +
+  geom_line(aes(x = Year, y = Total.Victims, 
+                color = Possible.Motive...General), size = 2) +
+  facet_wrap(~Possible.Motive...General) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+Mental illness has been a dominant factor throughout the years. Domestic \
+and social disputes as well as political and religious ideals have seen an \
+increase in the last 10 years. Financial disputes and employment issues such as\
+termination have remained a constant influence. At least one encouraging aspect\
+is that race has had a diminishing influence on mass shootings. 
+
+### Total Victims, Motives, and Shooter Age
+
+Previously we identified the top most deadly motives. We saw certain motives \
+are associated with age. How do different age groups associate with these \
+motives?  
+
+```{r echo=FALSE, message=FALSE, VictimMotivesAge}
+# Create discrete age ranges for easier viewing on stacked bar chart. A 
+# continuous scale is too difficult to distinguish age groups.
+shootings$Shooter.Age.Bucket <- cut(shootings$Average.Shooter.Age, 
+                                    breaks = c(10, 20, 30, 40, 50, 60, 70))
+# Only include those with known ages and only the top deadliest motives.
+plot_data <- subset(shootings, (!is.na(shootings$Shooter.Age.Bucket)) &
+                      (shootings$Possible.Motive...General %in% Top.Motives))
+
+ggplot(data=plot_data) + 
+  geom_col(aes(x = Possible.Motive...General,
+               y = Total.Number.of.Victims,
+               fill = Shooter.Age.Bucket)) + 
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+It appears that shooters ages 10 to 30 dominate the motives from mental illness\
+to social disputes. This should be considered high risk age groups for these \
+particular challenges and require special attention. 
+
+### Total Victims, Type of Victim and Shooter Age
+
+Who do the different age groups of shooters target? Which are the most targeted\
+types of victims?
+
+```{r echo=FALSE, message=FALSE, VictimTypeAge}
+# Only include those with known ages and only the top deadliest motives.
+plot_data <- subset(shootings, (!is.na(shootings$Shooter.Age.Bucket)) &
+                      (shootings$Possible.Motive...General %in% Top.Motives))
+
+ggplot(data=plot_data) + 
+  geom_col(aes(x = Targeted.Victim.s...General,
+               y = Total.Number.of.Victims,
+               fill = Shooter.Age.Bucket)) + 
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+It appears that places of work and school are where shooters target most. \
+Creating awareness of possible violence in these settings could help reduce \
+future shootings.
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+In this section, I explored the motives of shooters. Specifically I looked at\
+whether motives were influenced by geographical location and whether they have\
+changed with time. Looking at the time component for each motive revealed that\
+some have changed over time and certain motives of special concern in recent\
+history.  I also looked at what challenges motivate different age groups and\
+what types of victims they target. Looking at all these variables together\
+showed that certain age groups are at a higher risk for responding violently to\
+certain challenges and that they tend to target particular relationships. 
+
+### Were there any interesting or surprising interactions between features?
+
+I was surprised to see that race is a declining factor in mass shootings. It \
+was revealing to see that a younger demographic is more susceptible to violence\
+with mental illness. This is a problem that requires speciall attention. Also,\
+conflict at work and school can have serious consequences. Careful measures\
+should be implemented to facilitate peaceful conflict resolution in these\
+settings.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, Plot_One}
+ggplot(data = shootings) +
+  geom_histogram(aes(x = Year), fill = 'orange', binwidth = 1) +
+  scale_x_continuous(breaks = seq(1965, 2015, 5)) +
+  ggtitle("Number of Mass Shootings by Year") +
+  ylab("Number of Shootings")
+```
+
+### Description One
+
+This was the first plot in the investigation that alerted me to the serious\
+problem we have with mass shootings. These are increasing in frequency and pose\
+a great threat to public safety. 
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+# Select the motives of greatest current concern.
+Current.Motives.of.Concern <- c("Mental illness", "Social dispute", 
+                 "Political/Religious ideals", "Domestic dispute")
+
+ggplot(data=subset(VictimsByMotive, VictimsByMotive$Possible.Motive...General
+                   %in% Current.Motives.of.Concern)) +
+  geom_line(aes(x = Year, y = Total.Victims, 
+                color = Possible.Motive...General), size = 2) +
+  facet_wrap(~Possible.Motive...General) +
+  ggtitle("Dominant or Increasing Motives in Last Decade") +
+  ylab("Total Victims") +
+  theme(legend.position = "none") # Legend redundant with subplot titles.
+```
+
+### Description Two
+
+This plot illustrates the social challenges that are of greatest concern in \
+recent history. Four motives were identified that are dominant or increasing \
+within the past decade:
+
+1. Domestic dispute. This motive was first recorded as a factor in a 2005 \
+shooting. It continued to increase in frequency until it became the most deadly\
+motive in 2015.
+2. Mental illness. This has continued to be one of the dominant factors behind \
+mass shootings. Mental illness has always been a concern in society and appears\
+to have had a constant risk of violence.
+3. Political and religious ideals. This is also increasing in frequency. It's \
+not surprising given the political and religious polarization that is so \
+evident in media.
+4. Social dispute. This is a general description of conflicts that may occur \
+with friends, schoolmates, associates, or strangers. These violent encounters \
+are an increasing concern.  
+
+Efforts should be implemented to provide support for those with in these \
+challenges in these areas. For example, greater awareness and assistance should\
+be provided for those with mental illness, realizing that there is a small \
+possibility of violence if it remains unaddressed. It also occurs to me that we\
+could do more as a society to reduce polarization. Each group of people sharing\
+certain ideals represent a distribution. As harsh rhetoric builds and opponents\
+are increasingly demonized, it only reasons that more and more of the tail ends\
+of those within ideological groups will be pushed over social barriers and take\
+to violence. The more we can unite and work to understand each other's\
+differences, we may be able to discourage extreme violent reactions.
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+# Only include those with known ages and only the top deadliest motives.
+plot_data <- subset(shootings, (!is.na(shootings$Shooter.Age.Bucket)) &
+                      (shootings$Possible.Motive...General %in% Top.Motives))
+
+ggplot(data=plot_data) + 
+  geom_col(aes(x = Targeted.Victim.s...General,
+               y = Total.Number.of.Victims,
+               fill = Shooter.Age.Bucket)) + 
+  theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
+  ggtitle("Types of Victims Targeted by Shooters") +
+  ylab("Total Victims") +
+  xlab("Type of Victim") +
+  scale_fill_discrete(name="Shooter Age Range")
+```
+
+### Description Three
+
+This plot highlights two types of victims that are most frequently targeted. \
+Comparing this data to the bar plot of place type reveals that places of work \
+and school are common targets. These are two areas where efforts should be \
+applied to create awareness of violence and implement prevention measures.
+
+------
+
+# Reflection
+
+Mass shootings are a tragic and highly complex societal issue in the United\
+States. While admittedly incomplete, this dataset captures many important\
+variables that provide valuable insight. My initial exploration confirmed my\
+suspicion that mass shootings are a growing problem with a marked increase in\
+recent years. As I dug deeper into the data, these events appeared random and \
+it was difficult to find strong correlations in the data. However, I was able \
+to find several associations that were intriguing and some that were surprising.
+
+In the beginning of my exploration I was interested in victims, locations,\
+weapons, and other other variables external to the shooters. As my work\
+progressed, I noticed my focus shift to the shooters themselves. What were \
+their motives, their ages, and the relationships they target? I began to see\
+associations of motive and shooting location were related to age. I began to \
+get a sense that there are certain intense challenges that may drive \
+individuals to reacting in violent ways, especially when they have a\
+predisposition to certain emotional difficulties. It was found that mental\
+illness plays a large factor, but there may be other variables to consider as\
+well. 
+
+There are several other variables within this dataset that should be explored.\
+For example, a more detailed analysis of gun type could yield valuable\
+information that could guide gun control efforts. Are there certain brands that\
+are common and do these have distribution networks that could be improved? I \
+started to dig into the type of place shootings occured, but I did not explore \
+the shooters relationship to location. In addition, collection of more \
+variables could be insightful. For example, economic status of the shooter or \
+the economics of the area in which the shooter lives. This could help answer if\
+there are financial stratas that are more at risk. Also, what about education \
+level? It is my belief that if we dig into the details of what drives shooters \
+to these atrocities, we can come together to create awareness of risk factors \
+and implement prevention measures that will help reduce this terrible burden on\
+society.
+
